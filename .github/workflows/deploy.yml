@@ -31,6 +31,10 @@ jobs:
 
   deploy:
     needs: test
+    # push is already filtered to main (see `on:` above), but workflow_dispatch
+    # lets any branch be selected manually -- this guard stops deploy from
+    # running for anything except main regardless of trigger.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to EC2 and restart services
