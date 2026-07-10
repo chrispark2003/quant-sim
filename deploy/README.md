@@ -8,15 +8,44 @@ units (`quant-sim-live`, `quant-sim-api`, `quant-sim-dashboard`).
 
 ## One-time: converting to a git-tracked deploy
 
+`quant-sim` is a **private** repo, so the instance needs its own credential
+to fetch -- it can't rely on password auth (GitHub disabled that for git
+operations) and shouldn't share your personal machine's cached credentials.
+Use a **deploy key**: a dedicated SSH keypair, read-only, scoped to just
+this repo.
+
 If `~/quant-sim` on the instance was set up via `rsync` (not `git clone`),
 convert it to a real git checkout so the CI/CD workflow can `git pull`
 instead of re-syncing files on every push:
 
 ```bash
 ssh -i ssh/quant-sim-key.pem ubuntu@<EC2_HOST>
+
+# 1. Generate a dedicated deploy key (no passphrase -- it must run unattended)
+ssh-keygen -t ed25519 -f ~/.ssh/quant_sim_deploy -N "" -C "quant-sim-ec2-deploy"
+cat ~/.ssh/quant_sim_deploy.pub
+```
+
+Copy that public key's output, then in the GitHub web UI: repo -> **Settings
+-> Deploy keys -> Add deploy key** -> paste it -> leave "Allow write access"
+**unchecked** (the instance only ever needs to fetch, never push).
+
+Back on the instance, point SSH and git at the new key and switch the
+remote from HTTPS to SSH:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/quant_sim_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
 cd ~/quant-sim
 git init
-git remote add origin https://github.com/chrispark2003/quant-sim.git
+git remote remove origin 2>/dev/null   # in case an earlier attempt left one
+git remote add origin git@github.com:chrispark2003/quant-sim.git
+ssh -T git@github.com                  # accept the host-key prompt once; should greet you by repo
 git fetch origin main
 git reset --hard origin/main
 ```
