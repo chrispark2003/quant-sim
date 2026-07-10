@@ -1,0 +1,58 @@
+# SIMULATED / PAPER TRADING ONLY -- deploys the paper-trading bot to a
+# single EC2 instance. This workflow never touches a real brokerage; it only
+# restarts the systemd units that run the local simulator on that instance.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   EC2_HOST     the instance's public IP or DNS
+#   EC2_USER     ubuntu
+#   EC2_SSH_KEY  contents of the private key (ssh/quant-sim-key.pem)
+#
+# One-time setup on the instance before this workflow can deploy to it:
+# see deploy/README.md.
+name: Test and Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest tests/ -v
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 and restart services
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/quant-sim
+            OLD_COMMIT=$(git rev-parse HEAD)
+            git fetch origin main
+            git reset --hard origin/main
+            NEW_COMMIT=$(git rev-parse HEAD)
+
+            source .venv/bin/activate
+            if git diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" | grep -qx 'requirements.txt'; then
+              echo "requirements.txt changed -- reinstalling base dependencies"
+              pip install -r requirements.txt
+            fi
+
+            sudo systemctl restart quant-sim-live quant-sim-api quant-sim-dashboard
+            sleep 2
+            sudo systemctl is-active quant-sim-live quant-sim-api quant-sim-dashboard

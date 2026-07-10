@@ -17,8 +17,11 @@ requests>=2.31
 websocket-client>=1.7
 
 # Signals / NLP
-transformers>=4.38
-torch>=2.2
+# The news-sentiment signal lazy-imports transformers/torch and the ensemble
+# renormalizes weights across the other signals if they're absent, so these
+# are optional -- install via requirements-sentiment.txt if you want it.
+# (torch pulls in several GB of CUDA deps; on memory-constrained hosts this
+# can exceed a tmpfs-backed /tmp and fail with "Disk quota exceeded".)
 
 # Risk / stats
 scipy>=1.11

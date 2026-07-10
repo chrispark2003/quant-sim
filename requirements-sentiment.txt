@@ -1,0 +1,7 @@
+# Optional: enables signals/news_sentiment.py (FinBERT via HuggingFace).
+# Install with: pip install -r requirements.txt -r requirements-sentiment.txt
+#
+# Heavy (~1-2GB with CUDA deps) -- if installing on a memory-constrained host,
+# point pip's temp dir at real disk first: TMPDIR=~/pip-tmp pip install ...
+transformers>=4.38
+torch>=2.2

@@ -77,6 +77,21 @@ make dashboard                # start the FastAPI backend + Streamlit frontend
 make test                    # run the pytest suite
 ```
 
+`requirements.txt` covers everything except the news-sentiment signal;
+`transformers`/`torch` are pulled in separately via `requirements-sentiment.txt`
+since the ensemble runs fine without them (weights renormalize automatically):
+
+```bash
+pip install -r requirements.txt -r requirements-sentiment.txt
+```
+
+## Deploying to EC2
+
+See `deploy/README.md` for the one-time instance setup and
+`.github/workflows/deploy.yml` for the CI/CD workflow: on every push to
+`main`, tests run first, and the instance's systemd units are only restarted
+if they pass.
+
 ### Backtest vs. paper-trading mode
 
 - **Backtest** (`make backtest` / `backtest/*`) replays history. All output
