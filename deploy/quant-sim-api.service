@@ -1,0 +1,18 @@
+# FastAPI dashboard backend -- read-only view of the virtual ledger + kill switch.
+[Unit]
+Description=quant-sim dashboard API (SIMULATED / PAPER TRADING)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quant-sim
+ExecStart=/home/ubuntu/quant-sim/.venv/bin/uvicorn dashboard.app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/quant-sim/logs/api.log
+StandardError=append:/home/ubuntu/quant-sim/logs/api.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+# Autonomous paper-trading loop -- SIMULATED / PAPER TRADING ONLY.
+# Install: sudo cp deploy/quant-sim-live.service /etc/systemd/system/
+[Unit]
+Description=quant-sim autonomous paper-trading loop (SIMULATED)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quant-sim
+ExecStart=/home/ubuntu/quant-sim/.venv/bin/python -m live.loop
+Restart=always
+RestartSec=10
+# State persists to data/state/, so restarts resume without double-trading.
+StandardOutput=append:/home/ubuntu/quant-sim/logs/live.log
+StandardError=append:/home/ubuntu/quant-sim/logs/live.log
+
+[Install]
+WantedBy=multi-user.target

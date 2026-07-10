@@ -1,0 +1,29 @@
+# Secrets -- never commit real API keys
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Runtime / simulated state -- ledger, kill switch, blotter, cursors
+data/state/
+data/*.duckdb
+data/cache/
+data/parquet/
+
+# Logs
+logs/
+*.log
+
+# Generated reports (keep the generator, not its output)
+reports/*.md
+!reports/daily_report.py
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

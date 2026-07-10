@@ -1,0 +1,41 @@
+# quant-sim -- SIMULATED / PAPER TRADING ONLY
+
+# Core
+pandas>=2.0
+numpy>=1.24
+pyyaml>=6.0
+python-dotenv>=1.0
+pytz>=2023.3
+
+# Storage
+duckdb>=0.10
+pyarrow>=14.0
+
+# Data ingestion
+yfinance>=0.2.37
+requests>=2.31
+websocket-client>=1.7
+
+# Signals / NLP
+transformers>=4.38
+torch>=2.2
+
+# Risk / stats
+scipy>=1.11
+
+# Execution / backtest reporting
+tabulate>=0.9
+
+# API + dashboard
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.5
+streamlit>=1.32
+streamlit-autorefresh>=1.0.1
+
+# Reports
+markdown>=3.5
+
+# Testing
+pytest>=8.0
+httpx>=0.27

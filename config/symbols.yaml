@@ -1,0 +1,38 @@
+# Trading universe for the paper-trading simulator.
+# SIMULATED / PAPER TRADING ONLY -- these symbols are never sent to a real broker or exchange.
+
+equities:
+  - symbol: AAPL
+    sector: Technology
+  - symbol: MSFT
+    sector: Technology
+  - symbol: GOOGL
+    sector: Technology
+  - symbol: AMZN
+    sector: Consumer Discretionary
+  - symbol: JPM
+    sector: Financials
+  - symbol: XOM
+    sector: Energy
+  - symbol: JNJ
+    sector: Healthcare
+  - symbol: PG
+    sector: Consumer Staples
+
+crypto:
+  - symbol: BTCUSDT
+    sector: Crypto
+  - symbol: ETHUSDT
+    sector: Crypto
+  - symbol: SOLUSDT
+    sector: Crypto
+
+benchmarks:
+  equity: SPY
+  crypto: BTCUSDT
+
+news_query_terms:
+  - "stock market"
+  - "federal reserve"
+  - "crypto"
+  - "bitcoin"

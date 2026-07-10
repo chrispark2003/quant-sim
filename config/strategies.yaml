@@ -1,0 +1,114 @@
+# Central configuration for all strategy, signal, risk, and execution parameters.
+# No magic numbers should be hardcoded in source -- everything tunable lives here.
+# SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE
+
+account:
+  starting_cash: 100000.0
+  base_currency: USD
+
+signals:
+  momentum:
+    enabled: true
+    windows: [1, 5, 20]
+    zscore_lookback: 60
+  mean_reversion:
+    enabled: true
+    bollinger_window: 20
+    bollinger_num_std: 2.0
+    rsi_window: 14
+    rsi_overbought: 70
+    rsi_oversold: 30
+  cross_sectional:
+    enabled: true
+    value_weight: 0.33
+    quality_weight: 0.33
+    momentum_weight: 0.34
+    quality_lookback: 60
+  volatility_breakout:
+    enabled: true
+    atr_window: 14
+    compression_lookback: 20
+    compression_percentile: 0.25
+    breakout_multiple: 1.5
+  news_sentiment:
+    enabled: true
+    model_name: "ProsusAI/finbert"
+    cache_path: "data/cache/news_sentiment_cache.parquet"
+    lookback_hours: 24
+    decay_half_life_hours: 12
+
+  ensemble:
+    weights:
+      momentum: 0.25
+      mean_reversion: 0.20
+      cross_sectional: 0.25
+      volatility_breakout: 0.15
+      news_sentiment: 0.15
+    clip_range: [-1.0, 1.0]
+
+risk:
+  sizing:
+    method: "vol_target"       # vol_target | kelly | hybrid
+    target_annual_vol: 0.15
+    kelly_fraction: 0.5
+    lookback_days: 60
+    max_position_pct: 0.10     # hard cap per position, 10% of equity
+    max_sector_pct: 0.30       # hard cap per sector
+    min_position_notional: 100.0
+  portfolio:
+    max_gross_exposure: 2.0    # 200%
+    max_net_exposure: 1.0      # 100%
+    correlation_lookback_days: 60
+    correlation_limit: 0.7
+    correlation_size_haircut: 0.5
+  circuit_breaker:
+    max_drawdown_pct: 0.15
+    lookback_days: 365
+    cooldown_bars: 5
+
+execution:
+  equities:
+    slippage_bps: 5
+    commission_per_share: 0.005
+    commission_min: 1.0
+    taker_fee_bps: 1.0
+    volume_participation_cap: 0.10
+  crypto:
+    slippage_bps: 10
+    taker_fee_bps: 10.0
+    volume_participation_cap: 0.10
+  latency:
+    enabled: true
+    mean_ms: 250
+    std_ms: 75
+
+backtest:
+  vectorized:
+    default_lookback_days: 365
+  event_driven:
+    default_lookback_days: 365
+  walk_forward:
+    train_days: 180
+    test_days: 45
+    step_days: 45
+    purge_days: 2
+  benchmarks:
+    equity: SPY
+    crypto: BTCUSDT
+
+live:
+  cadence:
+    equities: "5m"
+    crypto: "1m"
+  equity_market_hours:
+    timezone: "America/New_York"
+    open: "09:30"
+    close: "16:00"
+    days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+  state_path: "data/state/live_state.json"
+  poll_interval_seconds: 30
+
+dashboard:
+  refresh_seconds: 30
+  host: "0.0.0.0"
+  port: 8000

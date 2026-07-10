@@ -1,0 +1,19 @@
+# Streamlit dashboard frontend.
+[Unit]
+Description=quant-sim Streamlit dashboard (SIMULATED / PAPER TRADING)
+After=quant-sim-api.service
+Wants=quant-sim-api.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/quant-sim
+Environment=QUANT_SIM_API_BASE=http://localhost:8000
+ExecStart=/home/ubuntu/quant-sim/.venv/bin/streamlit run dashboard/frontend/streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/quant-sim/logs/dashboard.log
+StandardError=append:/home/ubuntu/quant-sim/logs/dashboard.log
+
+[Install]
+WantedBy=multi-user.target
