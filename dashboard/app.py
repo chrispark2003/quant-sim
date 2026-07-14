@@ -137,11 +137,12 @@ def _downsample_equity_curve(equity_curve: pd.Series, max_points: int = _EQUITY_
     n = len(equity_curve)
     if n <= max_points:
         return equity_curve
-    step = -(-n // max_points)  # ceil(n / max_points): floor division here would keep >max_points rows
-    sampled = equity_curve.iloc[::step]
-    if sampled.index[-1] != equity_curve.index[-1]:
-        sampled = pd.concat([sampled, equity_curve.iloc[[-1]]])
-    return sampled
+    if max_points <= 0:
+        return equity_curve.iloc[0:0]
+    if max_points == 1:
+        return equity_curve.iloc[[-1]]
+    sampled_positions = [(i * (n - 1)) // (max_points - 1) for i in range(max_points)]
+    return equity_curve.iloc[sampled_positions]
 
 
 @app.get("/performance")
