@@ -4,12 +4,19 @@ disclaimer.
 """
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
-from dashboard.app import DISCLAIMER, app
+from dashboard.app import DISCLAIMER, _downsample_equity_curve, _EQUITY_CURVE_MAX_POINTS, app
 
 client = TestClient(app)
+
+
+def _equity_series(n: int) -> pd.Series:
+    idx = pd.date_range("2026-01-01", periods=max(n, 1), freq="min", tz="UTC")
+    vals = [100_000 + i * 0.5 for i in range(max(n, 1))]
+    return pd.Series(vals[:n], index=idx[:n])
 
 
 class TestEndpoints:
@@ -98,6 +105,44 @@ class TestEndpoints:
 
         status_after_resume = client.get("/status").json()
         assert status_after_resume["kill_switch_halted"] is False
+
+
+class TestEquityCurveDownsampling:
+    """Regression coverage for the /performance payload-size fix: the equity
+    curve grows one point per live-loop cycle with no retention limit (it
+    reached ~14k points / ~1MB after 3 days of live trading), so it must
+    always be capped and must never drop the most recent point -- the
+    frontend reads that point as "current equity"."""
+
+    @pytest.mark.parametrize("n", [0, 1, 499, 500, 501, 502, 600, 14_477])
+    def test_never_exceeds_cap(self, n):
+        out = _downsample_equity_curve(_equity_series(n))
+        assert len(out) <= _EQUITY_CURVE_MAX_POINTS
+
+    @pytest.mark.parametrize("n", [1, 499, 500, 501, 600, 14_477])
+    def test_preserves_most_recent_point(self, n):
+        s = _equity_series(n)
+        out = _downsample_equity_curve(s)
+        assert out.iloc[-1] == s.iloc[-1]
+        assert out.index[-1] == s.index[-1]
+
+    def test_noop_when_already_under_cap(self):
+        s = _equity_series(50)
+        out = _downsample_equity_curve(s)
+        assert len(out) == 50
+        pd.testing.assert_series_equal(out, s)
+
+    def test_stays_near_cap_just_above_threshold(self):
+        # A fixed stride (n // max_points) undersamples badly just above the
+        # cap -- e.g. n=501 with a stride of 2 would keep only ~251 rows.
+        # Evenly spaced positions should stay close to the intended cap.
+        out = _downsample_equity_curve(_equity_series(501))
+        assert len(out) >= _EQUITY_CURVE_MAX_POINTS - 1
+
+    def test_performance_endpoint_curve_is_capped(self):
+        resp = client.get("/performance")
+        assert resp.status_code == 200
+        assert len(resp.json()["equity_curve"]) <= _EQUITY_CURVE_MAX_POINTS
 
 
 if __name__ == "__main__":

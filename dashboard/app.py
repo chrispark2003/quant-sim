@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -137,11 +138,12 @@ def _downsample_equity_curve(equity_curve: pd.Series, max_points: int = _EQUITY_
     n = len(equity_curve)
     if n <= max_points:
         return equity_curve
-    step = -(-n // max_points)  # ceil(n / max_points): floor division here would keep >max_points rows
-    sampled = equity_curve.iloc[::step]
-    if sampled.index[-1] != equity_curve.index[-1]:
-        sampled = pd.concat([sampled, equity_curve.iloc[[-1]]])
-    return sampled
+    # Evenly spaced positions from 0 to n-1 inclusive -- always includes the
+    # last index, stays at (near) exactly max_points regardless of how far n
+    # is above the cap (a fixed stride under/over-shoots badly just above the
+    # threshold, e.g. n=501 with step=2 would keep only ~251 rows).
+    positions = sorted(set(np.linspace(0, n - 1, max_points).round().astype(int)))
+    return equity_curve.iloc[positions]
 
 
 @app.get("/performance")
