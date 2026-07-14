@@ -124,11 +124,33 @@ class StatusResponse(BaseModel):
     next_scheduled_run_crypto: Optional[str]
 
 
+_EQUITY_CURVE_MAX_POINTS = 500
+
+
+def _downsample_equity_curve(equity_curve: pd.Series, max_points: int = _EQUITY_CURVE_MAX_POINTS) -> pd.Series:
+    """The equity curve gains one point per live-loop cycle (as often as
+    every ~1 min for crypto) and never shrinks. Left unbounded, serializing
+    it in full on every dashboard poll grows the response (and request
+    latency) without limit over the bot's lifetime -- it was ~1MB / 14k
+    points after 3 days. Downsample for display, always keeping the most
+    recent point (the frontend reads it as "current equity")."""
+    n = len(equity_curve)
+    if n <= max_points:
+        return equity_curve
+    step = -(-n // max_points)  # ceil(n / max_points): floor division here would keep >max_points rows
+    sampled = equity_curve.iloc[::step]
+    if sampled.index[-1] != equity_curve.index[-1]:
+        sampled = pd.concat([sampled, equity_curve.iloc[[-1]]])
+    return sampled
+
+
 @app.get("/performance")
 def get_performance():
     _refresh_state()
     prices = _current_prices()
     equity_curve = _state.ledger.equity_curve()
+    max_drawdown = float((equity_curve / equity_curve.cummax() - 1.0).min()) if not equity_curve.empty else 0.0
+    display_curve = _downsample_equity_curve(equity_curve)
     return {
         "disclaimer": DISCLAIMER,
         "starting_cash": _state.ledger.starting_cash,
@@ -136,9 +158,9 @@ def get_performance():
         "realized_pnl": _state.ledger.total_realized_pnl(),
         "unrealized_pnl": _state.ledger.total_unrealized_pnl(prices),
         "equity_curve": [
-            {"timestamp": str(ts), "equity": float(v)} for ts, v in equity_curve.items()
+            {"timestamp": str(ts), "equity": float(v)} for ts, v in display_curve.items()
         ],
-        "max_drawdown": float((equity_curve / equity_curve.cummax() - 1.0).min()) if not equity_curve.empty else 0.0,
+        "max_drawdown": max_drawdown,
     }
 
 
