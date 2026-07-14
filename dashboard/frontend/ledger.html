@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The quant-sim Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Spline+Sans+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Direction C -- "The Ledger". Newspaper aesthetic for a paper-trading bot.
+     SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE */
+  :root {
+    --bg: #f4f0e6; --ink: #1e1a14; --hair: #d8d0bd; --muted: #7a7264;
+    --red: oklch(0.5 0.14 30); --up: oklch(0.48 0.11 150);
+    --inkFill: rgba(30,26,20,0.06); --redFill: rgba(160,60,46,0.14);
+    --upflash: rgba(45,106,60,0.18); --downflash: rgba(160,60,46,0.18);
+    --archivebg: rgba(30,26,20,0.045);
+  }
+  html.dark {
+    --bg: #191510; --ink: #eae2d0; --hair: #3b342a; --muted: #9a9078;
+    --red: oklch(0.68 0.14 30); --up: oklch(0.7 0.11 150);
+    --inkFill: rgba(234,226,208,0.07); --redFill: rgba(210,110,90,0.16);
+    --upflash: rgba(120,180,130,0.20); --downflash: rgba(210,110,90,0.20);
+    --archivebg: rgba(234,226,208,0.05);
+  }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: 'Newsreader', Georgia, serif; font-size: 15px; }
+  a { color: var(--red); }
+  .mono { font-family: 'Spline Sans Mono', monospace; }
+  .kicker { font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: var(--red); font-weight: 700; }
+  .lbl { font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: var(--muted); }
+  .figcap { display: flex; justify-content: space-between; align-items: baseline; font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+  .btn { background: none; border: 1px solid var(--hair); color: var(--muted); font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: 0.08em; padding: 5px 12px; cursor: pointer; border-radius: 3px; }
+  .btn-kill { border: 1.5px solid var(--red); color: var(--red); font-weight: 700; letter-spacing: 0.1em; padding: 6px 14px; }
+  .btn-kill:hover { background: var(--red); color: var(--bg); }
+  .btn-confirm { background: var(--red); border: 1.5px solid var(--red); color: var(--bg); font-weight: 700; padding: 6px 12px; }
+  .btn-resume { border: 1.5px solid var(--ink); color: var(--ink); font-weight: 700; padding: 6px 12px; }
+  .halted-badge { background: var(--red); color: var(--bg); font-family: 'Spline Sans Mono', monospace; font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 3px; letter-spacing: 0.1em; }
+  @keyframes flashUp { 0% { background: var(--upflash); } 100% { background: transparent; } }
+  @keyframes flashDown { 0% { background: var(--downflash); } 100% { background: transparent; } }
+  @keyframes wirePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @keyframes dispatchIn { 0% { background: var(--upflash); } 100% { background: transparent; } }
+  .flash-up { animation: flashUp 1s ease-out; border-radius: 3px; }
+  .flash-down { animation: flashDown 1s ease-out; border-radius: 3px; }
+  input, select { outline: none; }
+  select { font-family: 'Spline Sans Mono', monospace; font-size: 12px; background: transparent; color: var(--ink); border: 1px solid var(--hair); border-radius: 3px; padding: 5px 8px; }
+  input.search { background: transparent; border: none; border-bottom: 1px solid var(--ink); font-family: 'Newsreader', serif; font-style: italic; font-size: 14px; color: var(--ink); padding: 5px 2px; width: 210px; }
+  .empty-note { font-size: 13.5px; font-style: italic; color: var(--muted); padding: 14px 0; }
+</style>
+</head>
+<body>
+
+<!-- Disclaimer band -->
+<div style="position: sticky; top: 0; z-index: 50; background: var(--ink); color: var(--bg); text-align: center; padding: 8px 16px; font-family: 'Spline Sans Mono', monospace; font-size: 11.5px; font-weight: 600; letter-spacing: 0.14em;">SIMULATED / PAPER TRADING — NOT FINANCIAL ADVICE · EVERY FIGURE ON THIS PAGE IS A SIMULATION AGAINST A VIRTUAL LEDGER</div>
+
+<div style="max-width: 1300px; margin: 0 auto; padding: 0 32px 56px;">
+
+  <!-- Masthead -->
+  <header style="text-align: center; padding: 26px 0 14px; border-bottom: 3px double var(--ink);">
+    <div class="mono" style="display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; letter-spacing: 0.1em; color: var(--muted);">
+      <span>VOL. 1 · AUTONOMOUS DESK</span>
+      <span style="display: inline-flex; align-items: center; gap: 7px;"><span id="wire-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--muted); animation: wirePulse 1.8s ease-in-out infinite; display: inline-block;"></span>WIRE · <span id="live-label">CONNECTING</span> · <span id="last-update">…</span></span>
+    </div>
+    <h1 style="font-size: 54px; font-weight: 600; margin: 10px 0 6px; letter-spacing: -0.01em; font-optical-sizing: auto;">The quant-sim Ledger</h1>
+    <div style="font-style: italic; color: var(--muted); font-size: 15px;">A daily record of one bot's simulated fortunes — momentum, mean reversion &amp; other machinery</div>
+    <div class="mono" style="display: flex; align-items: center; justify-content: space-between; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--hair); font-size: 11.5px; color: var(--muted);">
+      <span>NEXT RUNS — EQUITY <span id="next-eq">—</span> · CRYPTO <span id="next-cr">—</span></span>
+      <button id="theme-toggle" class="btn">NIGHT EDITION</button>
+      <span id="kill-area" style="position: relative; display: inline-flex; align-items: center; gap: 8px;"></span>
+    </div>
+  </header>
+
+  <!-- Lead: equity headline + charts -->
+  <section style="display: grid; grid-template-columns: 340px 1fr; gap: 32px; padding: 26px 0 22px; border-bottom: 1px solid var(--hair);">
+    <div>
+      <div class="kicker">THE HEADLINE FIGURE</div>
+      <div id="equity-fig" style="font-size: 58px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; margin-top: 8px; padding: 2px 6px 2px 0; display: inline-block;">—</div>
+      <div id="total-ret" style="font-size: 17px; font-style: italic; margin-top: 6px; color: var(--muted);">awaiting the first edition</div>
+      <div style="margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; font-size: 14px;">
+        <div style="border-top: 1px solid var(--hair); padding-top: 7px;"><div class="lbl">UNREALIZED</div><div id="unreal" class="mono" style="font-weight: 600; font-size: 17px; display: inline-block; padding: 0 3px;">—</div></div>
+        <div style="border-top: 1px solid var(--hair); padding-top: 7px;"><div class="lbl">REALIZED</div><div id="real" class="mono" style="font-weight: 600; font-size: 17px; display: inline-block; padding: 0 3px;">—</div></div>
+        <div style="border-top: 1px solid var(--hair); padding-top: 7px;"><div class="lbl">CASH ON HAND</div><div id="cash" class="mono" style="font-weight: 600; font-size: 17px;">—</div></div>
+        <div style="border-top: 1px solid var(--hair); padding-top: 7px;"><div class="lbl">DEEPEST DRAWDOWN</div><div id="max-dd" class="mono" style="font-weight: 600; font-size: 17px; color: var(--red);">—</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="figcap" style="margin-bottom: 8px;"><span>FIG. 1 — EQUITY, DOTTED RULE AT COST</span><span id="eq-range">—</span></div>
+      <div style="position: relative; height: 230px; border-bottom: 1px solid var(--ink);">
+        <svg viewBox="0 0 800 230" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+          <path id="eq-area" d="" fill="var(--inkFill)"></path>
+          <path id="eq-line" d="" fill="none" stroke="var(--ink)" stroke-width="1.8" vector-effect="non-scaling-stroke"></path>
+          <line id="eq-baseline" x1="0" y1="-10" x2="800" y2="-10" stroke="var(--red)" stroke-width="1" stroke-dasharray="2 5"></line>
+        </svg>
+        <div id="eq-dot" style="position: absolute; left: 100%; top: -100%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%; background: var(--red); animation: wirePulse 1.8s infinite;"></div>
+        <div id="eq-max" class="lbl" style="position: absolute; top: 0; right: 4px;"></div>
+        <div id="eq-min" class="lbl" style="position: absolute; bottom: 4px; right: 4px;"></div>
+        <div id="eq-empty" class="empty-note" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">The presses are warm; awaiting the first recorded equity point.</div>
+      </div>
+      <div class="figcap" style="margin: 14px 0 6px;"><span>FIG. 2 — TIME SPENT UNDERWATER (% BELOW PEAK)</span><span style="color: var(--red);">NOW <span id="dd-now">—</span></span></div>
+      <div style="position: relative; height: 74px;">
+        <svg viewBox="0 0 800 74" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+          <line x1="0" y1="1" x2="800" y2="1" stroke="var(--hair)" stroke-width="1"></line>
+          <path id="dd-area" d="" fill="var(--redFill)"></path>
+          <path id="dd-line" d="" fill="none" stroke="var(--red)" stroke-width="1.2" vector-effect="non-scaling-stroke"></path>
+        </svg>
+        <div id="dd-min" class="lbl" style="position: absolute; bottom: 0; right: 4px;"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Columns: risk + attribution + positions -->
+  <section style="display: grid; grid-template-columns: 300px 1px 300px 1px 1fr; gap: 0 24px; padding: 22px 0; border-bottom: 1px solid var(--hair);">
+    <div>
+      <div class="kicker" style="margin-bottom: 12px;">VITAL STATISTICS</div>
+      <div style="display: flex; gap: 22px; margin-bottom: 14px;">
+        <div><div id="sharpe-big" style="font-size: 40px; font-weight: 600; line-height: 1;">—</div><div class="lbl" style="margin-top: 4px;">SHARPE</div></div>
+        <div><div id="maxdd-big" style="font-size: 40px; font-weight: 600; line-height: 1; color: var(--red);">—</div><div class="lbl" style="margin-top: 4px;">MAX DD</div></div>
+        <div><div id="hit-big" style="font-size: 40px; font-weight: 600; line-height: 1;">—</div><div class="lbl" style="margin-top: 4px;">HIT RATE</div></div>
+      </div>
+      <div id="risk-secondary" style="display: flex; flex-direction: column;"></div>
+    </div>
+    <div style="background: var(--hair);"></div>
+    <div>
+      <div class="kicker" style="margin-bottom: 12px;">CREDIT WHERE DUE</div>
+      <div style="font-size: 13.5px; font-style: italic; color: var(--muted); margin-bottom: 14px;">Realized profit &amp; loss, by the signal that ordered the trade.</div>
+      <div id="attribution-rows" style="display: flex; flex-direction: column; gap: 11px;"><div class="empty-note">No realized trades yet — the desks are quiet.</div></div>
+      <div id="fees-line" style="font-size: 12.5px; font-style: italic; color: var(--muted); margin-top: 12px;"></div>
+    </div>
+    <div style="background: var(--hair);"></div>
+    <div>
+      <div class="kicker" style="margin-bottom: 12px;">THE BOOK — <span id="pos-count">0</span> OPEN POSITIONS</div>
+      <div class="lbl" style="display: grid; grid-template-columns: 88px 54px 1fr 96px 108px; gap: 0 12px; font-size: 10px; border-bottom: 1px solid var(--ink); padding-bottom: 5px;">
+        <div>SYMBOL</div><div>SIDE</div><div>TREND</div><div style="text-align: right;">LAST</div><div style="text-align: right;">UNRL P&amp;L</div>
+      </div>
+      <div id="positions-rows"><div class="empty-note">The book is empty — no open positions.</div></div>
+      <div style="font-size: 12px; font-style: italic; color: var(--muted); margin-top: 8px;">Quantities &amp; cost basis via the API; marks tick with the wire.</div>
+    </div>
+  </section>
+
+  <!-- Dispatches (blotter) -->
+  <section style="padding: 22px 0; border-bottom: 1px solid var(--hair);">
+    <div style="display: flex; align-items: baseline; gap: 16px; margin-bottom: 4px; flex-wrap: wrap;">
+      <div class="kicker">DISPATCHES FROM THE MACHINE</div>
+      <div style="font-size: 13.5px; font-style: italic; color: var(--muted);">every autonomous fill, in the bot's own words</div>
+      <div style="flex: 1;"></div>
+      <select id="strat-filter"><option value="all">ALL DESKS</option></select>
+      <input id="search" class="search" placeholder="search the record…">
+    </div>
+    <div id="blotter-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; margin-top: 14px;"><div class="empty-note">No dispatches yet — the machine has not traded.</div></div>
+    <div id="blotter-count" class="mono" style="font-size: 11px; color: var(--muted); margin-top: 12px;"></div>
+  </section>
+
+  <!-- Backtest archive -->
+  <section style="margin-top: 26px; background: var(--archivebg); border: 1px solid var(--ink); padding: 20px 24px; position: relative;">
+    <div style="position: absolute; top: 14px; right: 18px; border: 2px solid var(--red); color: var(--red); font-family: 'Spline Sans Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; padding: 5px 10px; transform: rotate(-4deg); opacity: 0.85;">HISTORICAL SIMULATION — NOT LIVE</div>
+    <div class="lbl" style="font-weight: 700; letter-spacing: 0.14em; font-size: 11px;">FROM THE ARCHIVE — BACKTEST RESULTS</div>
+    <div id="bt-label" style="font-size: 13.5px; font-style: italic; color: var(--muted); margin: 4px 0 14px;">No backtest on file — run <span class="mono" style="font-style: normal;">make backtest</span> to print one.</div>
+    <div id="bt-body" style="display: none; grid-template-columns: 320px 1fr; gap: 28px; align-items: center;">
+      <svg viewBox="0 0 320 86" preserveAspectRatio="none" style="width: 100%; height: 86px; display: block;">
+        <path id="bt-line" d="" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="1 4" stroke-linecap="round" vector-effect="non-scaling-stroke"></path>
+      </svg>
+      <div id="bt-metrics" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 24px;"></div>
+    </div>
+  </section>
+
+  <div class="mono" style="text-align: center; font-size: 10.5px; letter-spacing: 0.12em; color: var(--muted); margin-top: 30px;">SIMULATED / PAPER TRADING — NOT FINANCIAL ADVICE · PRINTED BY ROBOTS, FOR HUMANS</div>
+</div>
+
+<script>
+"use strict";
+// The quant-sim Ledger -- live frontend against the FastAPI backend.
+// SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE.
+
+const API = ""; // same-origin; served by the FastAPI app itself
+const POLL_MS = 5000;
+const STRATEGIES = ["momentum", "mean_reversion", "cross_sectional", "volatility_breakout", "news_sentiment", "ensemble"];
+
+// ---------- formatting ----------
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function fmtMoney(v, { sign = false, dp = 2 } = {}) {
+  if (v == null || isNaN(v)) return "—";
+  const s = v < 0 ? "-" : sign ? "+" : "";
+  return s + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function fmtNum(v, dp = 2) {
+  if (v == null || isNaN(v)) return "—";
+  return v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function fmtPct(v, dp = 2, sign = false) {
+  if (v == null || isNaN(v)) return "—";
+  const s = v < 0 ? "" : sign ? "+" : "";
+  return s + (v * 100).toFixed(dp) + "%";
+}
+function fmtFixed(v, dp = 2) { return (v == null || isNaN(v)) ? "—" : Number(v).toFixed(dp); }
+function fmtTime(d) {
+  if (!d) return "—";
+  d = d instanceof Date ? d : new Date(d);
+  return isNaN(d) ? "—" : d.toLocaleTimeString("en-US", { hour12: false });
+}
+function fmtDateTime(d) {
+  d = d instanceof Date ? d : new Date(d);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " +
+    d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+}
+
+// ---------- SVG paths ----------
+function linePath(values, w, h, pad = 2) {
+  if (!values || values.length < 2) return "";
+  let min = Math.min(...values), max = Math.max(...values);
+  if (max - min < 1e-9) max = min + 1;
+  const n = values.length;
+  const x = (i) => pad + (i / (n - 1)) * (w - 2 * pad);
+  const y = (v) => pad + (1 - (v - min) / (max - min)) * (h - 2 * pad);
+  let d = `M${x(0).toFixed(2)},${y(values[0]).toFixed(2)}`;
+  for (let i = 1; i < n; i++) d += `L${x(i).toFixed(2)},${y(values[i]).toFixed(2)}`;
+  return d;
+}
+function scaleInfo(values, extra = []) {
+  const all = values.concat(extra);
+  let min = Math.min(...all), max = Math.max(...all);
+  const range = max - min || 1;
+  return { min: min - range * 0.06, max: max + range * 0.06 };
+}
+function pathWithScale(values, w, h, min, max) {
+  const n = values.length;
+  if (n < 2) return "";
+  const x = (i) => (i / (n - 1)) * w;
+  const y = (v) => (1 - (v - min) / (max - min)) * h;
+  let d = `M${x(0).toFixed(2)},${y(values[0]).toFixed(2)}`;
+  for (let i = 1; i < n; i++) d += `L${x(i).toFixed(2)},${y(values[i]).toFixed(2)}`;
+  return d;
+}
+function areaWithScale(values, w, h, min, max, floorV = null) {
+  const n = values.length;
+  if (n < 2) return "";
+  const x = (i) => (i / (n - 1)) * w;
+  const y = (v) => (1 - (v - min) / (max - min)) * h;
+  const floorY = floorV == null ? h : y(floorV);
+  let d = `M${x(0).toFixed(2)},${floorY.toFixed(2)}`;
+  for (let i = 0; i < n; i++) d += `L${x(i).toFixed(2)},${y(values[i]).toFixed(2)}`;
+  d += `L${x(n - 1).toFixed(2)},${floorY.toFixed(2)}Z`;
+  return d;
+}
+
+// ---------- state ----------
+const S = {
+  prev: {},            // previous numeric values, for flash direction
+  armed: false,
+  halted: false,
+  filter: "",
+  strat: "all",
+  blotter: [],
+  disarmTimer: null,
+  backtestLoaded: false,
+};
+
+const $ = (id) => document.getElementById(id);
+const pnlColor = (v) => (v >= 0 ? "var(--up)" : "var(--red)");
+
+function flashClass(key, value) {
+  // one-shot flash: compare against previous poll's value
+  const prev = S.prev[key];
+  S.prev[key] = value;
+  if (prev == null || value == null || value === prev) return "";
+  return value > prev ? "flash-up" : "flash-down";
+}
+function applyFlash(el, cls) {
+  el.classList.remove("flash-up", "flash-down");
+  if (cls) { void el.offsetWidth; el.classList.add(cls); }
+}
+
+// ---------- theme ----------
+function setTheme(dark) {
+  document.documentElement.classList.toggle("dark", dark);
+  $("theme-toggle").textContent = dark ? "DAY EDITION" : "NIGHT EDITION";
+  localStorage.setItem("ledger-theme", dark ? "dark" : "light");
+}
+$("theme-toggle").onclick = () => setTheme(!document.documentElement.classList.contains("dark"));
+setTheme(localStorage.getItem("ledger-theme") === "dark");
+
+// ---------- kill switch ----------
+function renderKillArea() {
+  const area = $("kill-area");
+  if (S.halted) {
+    area.innerHTML = '<span class="halted-badge">⛔ PRESSES STOPPED</span><button id="resume-btn" class="btn btn-resume">RESUME</button>';
+    $("resume-btn").onclick = async () => { await fetch(API + "/resume", { method: "POST" }); poll(); };
+  } else if (S.armed) {
+    area.innerHTML = '<span style="color: var(--red); font-weight: 700;">HALT ALL NEW ORDERS?</span>' +
+      '<button id="confirm-kill" class="btn btn-confirm">CONFIRM</button>' +
+      '<button id="cancel-kill" class="btn">CANCEL</button>';
+    $("confirm-kill").onclick = async () => {
+      S.armed = false; clearTimeout(S.disarmTimer);
+      await fetch(API + "/kill", { method: "POST" });
+      poll();
+    };
+    $("cancel-kill").onclick = () => { S.armed = false; clearTimeout(S.disarmTimer); renderKillArea(); };
+  } else {
+    area.innerHTML = '<button id="arm-kill" class="btn btn-kill">⏻ STOP THE PRESSES</button>';
+    $("arm-kill").onclick = () => {
+      S.armed = true;
+      clearTimeout(S.disarmTimer);
+      S.disarmTimer = setTimeout(() => { S.armed = false; renderKillArea(); }, 6000);
+      renderKillArea();
+    };
+  }
+}
+
+// ---------- blotter filter controls ----------
+const stratSelect = $("strat-filter");
+for (const s of STRATEGIES) {
+  const opt = document.createElement("option");
+  opt.value = s; opt.textContent = s.toUpperCase().replace(/_/g, " ");
+  stratSelect.appendChild(opt);
+}
+stratSelect.onchange = () => { S.strat = stratSelect.value; renderBlotter(); };
+$("search").oninput = () => { S.filter = $("search").value; renderBlotter(); };
+
+// ---------- renderers ----------
+function renderPerformance(perf) {
+  const curve = perf.equity_curve || [];
+  const eqVals = curve.map((p) => p.equity);
+  const hasCurve = eqVals.length >= 2;
+  const equity = hasCurve ? eqVals[eqVals.length - 1]
+    : perf.starting_cash + perf.realized_pnl + perf.unrealized_pnl;
+
+  const eqEl = $("equity-fig");
+  eqEl.textContent = fmtMoney(equity, { dp: 0 });
+  applyFlash(eqEl, flashClass("equity", equity));
+
+  const ret = equity - perf.starting_cash;
+  const retEl = $("total-ret");
+  retEl.textContent = fmtPct(equity / perf.starting_cash - 1, 2, true) + " (" + fmtMoney(ret, { sign: true, dp: 0 }) + ") since a " + fmtMoney(perf.starting_cash, { dp: 0 }) + " beginning";
+  retEl.style.color = pnlColor(ret);
+
+  const unrealEl = $("unreal");
+  unrealEl.textContent = fmtMoney(perf.unrealized_pnl, { sign: true });
+  unrealEl.style.color = pnlColor(perf.unrealized_pnl);
+  applyFlash(unrealEl, flashClass("unrealized", perf.unrealized_pnl));
+
+  const realEl = $("real");
+  realEl.textContent = fmtMoney(perf.realized_pnl, { sign: true });
+  realEl.style.color = pnlColor(perf.realized_pnl);
+  applyFlash(realEl, flashClass("realized", perf.realized_pnl));
+
+  $("cash").textContent = fmtMoney(perf.current_cash);
+  $("max-dd").textContent = fmtPct(perf.max_drawdown, 1);
+
+  $("eq-empty").style.display = hasCurve ? "none" : "flex";
+  if (hasCurve) {
+    const { min, max } = scaleInfo(eqVals, [perf.starting_cash]);
+    $("eq-line").setAttribute("d", pathWithScale(eqVals, 800, 230, min, max));
+    $("eq-area").setAttribute("d", areaWithScale(eqVals, 800, 230, min, max));
+    const by = ((1 - (perf.starting_cash - min) / (max - min)) * 230).toFixed(1);
+    $("eq-baseline").setAttribute("y1", by); $("eq-baseline").setAttribute("y2", by);
+    $("eq-dot").style.top = ((1 - (equity - min) / (max - min)) * 100).toFixed(2) + "%";
+    $("eq-dot").style.display = "block";
+    $("eq-max").textContent = fmtMoney(max, { dp: 0 });
+    $("eq-min").textContent = fmtMoney(min, { dp: 0 });
+    $("eq-range").textContent = fmtMoney(eqVals[0], { dp: 0 }) + " → " + fmtMoney(equity, { dp: 0 });
+
+    // drawdown (underwater) series derived from the same curve
+    let peak = -Infinity;
+    const dd = eqVals.map((v) => { peak = Math.max(peak, v); return (v / peak - 1) * 100; });
+    const ddMin = Math.min(...dd, -1);
+    $("dd-line").setAttribute("d", pathWithScale(dd, 800, 74, ddMin, 0.15));
+    $("dd-area").setAttribute("d", areaWithScale(dd, 800, 74, ddMin, 0.15, 0));
+    $("dd-min").textContent = ddMin.toFixed(1) + "%";
+    $("dd-now").textContent = dd[dd.length - 1].toFixed(2) + "%";
+  } else {
+    $("eq-dot").style.display = "none";
+  }
+}
+
+function renderRisk(risk) {
+  const r = risk.metrics || {};
+  $("sharpe-big").textContent = fmtFixed(r.sharpe);
+  $("maxdd-big").textContent = r.max_drawdown != null ? (r.max_drawdown * 100).toFixed(1) + "%" : "—";
+  $("hit-big").textContent = r.hit_rate != null ? Math.round(r.hit_rate * 100) + "%" : "—";
+  const rows = [
+    ["Sortino", fmtFixed(r.sortino), "var(--ink)"],
+    ["Calmar", fmtFixed(r.calmar), "var(--ink)"],
+    ["CAGR", fmtPct(r.cagr, 1), r.cagr != null ? pnlColor(r.cagr) : "var(--ink)"],
+    ["Beta, vs. benchmark", fmtFixed(r.beta), "var(--ink)"],
+    ["Value at Risk, 95%", fmtPct(r.var_95, 2), "var(--red)"],
+    ["Value at Risk, 99%", fmtPct(r.var_99, 2), "var(--red)"],
+    ["CVaR, 95%", fmtPct(r.cvar_95, 2), "var(--red)"],
+    ["CVaR, 99%", fmtPct(r.cvar_99, 2), "var(--red)"],
+    ["The average win", fmtMoney(r.avg_win), "var(--up)"],
+    ["The average loss", fmtMoney(r.avg_loss), "var(--red)"],
+  ];
+  $("risk-secondary").innerHTML = rows.map(([label, value, color]) =>
+    `<div style="display: flex; justify-content: space-between; align-items: baseline; padding: 4.5px 0; border-bottom: 1px dotted var(--hair);">
+      <span style="font-size: 13.5px; font-style: italic; color: var(--muted);">${label}</span>
+      <span class="mono" style="font-size: 12.5px; font-weight: 600; color: ${color};">${value}</span>
+    </div>`).join("");
+}
+
+function renderAttribution(att) {
+  const rows = att.attribution || [];
+  if (!rows.length) {
+    $("attribution-rows").innerHTML = '<div class="empty-note">No realized trades yet — the desks are quiet.</div>';
+    $("fees-line").innerHTML = "";
+    return;
+  }
+  const maxAbs = Math.max(...rows.map((a) => Math.abs(a.realized_pnl)), 1e-9);
+  const totalFees = rows.reduce((s, a) => s + (a.fees_paid || 0), 0);
+  $("attribution-rows").innerHTML = rows
+    .slice().sort((a, b) => b.realized_pnl - a.realized_pnl)
+    .map((a) => {
+      const w = Math.max(Math.abs(a.realized_pnl) / maxAbs * 50, 0.5);
+      const left = a.realized_pnl >= 0 ? 50 : 50 - w;
+      const barColor = a.realized_pnl >= 0 ? "var(--ink)" : "var(--red)";
+      return `<div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px;">
+          <span style="font-size: 14px;">${esc(String(a.strategy).replace(/_/g, " "))}</span>
+          <span class="mono" style="font-size: 12px; font-weight: 600; color: ${pnlColor(a.realized_pnl)};">${fmtMoney(a.realized_pnl, { sign: true, dp: 0 })}</span>
+        </div>
+        <div style="height: 7px; position: relative; background: var(--inkFill);">
+          <div style="position: absolute; top: 0; bottom: 0; left: ${left}%; width: ${w}%; background: ${barColor};"></div>
+          <div style="position: absolute; top: -2px; bottom: -2px; left: 50%; width: 1px; background: var(--muted);"></div>
+        </div>
+      </div>`;
+    }).join("");
+  $("fees-line").innerHTML = `The house always collects: <span class="mono" style="font-style: normal;">${fmtMoney(totalFees)}</span> in simulated fees.`;
+}
+
+function renderPositions(pos) {
+  const rows = pos.positions || [];
+  $("pos-count").textContent = rows.length;
+  if (!rows.length) {
+    $("positions-rows").innerHTML = '<div class="empty-note">The book is empty — no open positions.</div>';
+    return;
+  }
+  $("positions-rows").innerHTML = rows.map((p) => {
+    const side = p.quantity >= 0 ? "long" : "short";
+    const spark = p.spark && p.spark.length >= 2 ? p.spark : null;
+    const sparkColor = spark && spark[spark.length - 1] >= spark[0] ? "var(--ink)" : "var(--red)";
+    const pxFlash = flashClass("px:" + p.symbol, p.current_price);
+    const uplFlash = flashClass("upl:" + p.symbol, p.unrealized_pnl);
+    return `<div style="display: grid; grid-template-columns: 88px 54px 1fr 96px 108px; gap: 0 12px; align-items: center; padding: 6px 0; border-bottom: 1px dotted var(--hair);">
+      <div class="mono" style="font-weight: 700; font-size: 12.5px;">${esc(p.symbol)}</div>
+      <div style="font-size: 12px; font-style: italic; color: ${side === "long" ? "var(--up)" : "var(--red)"};">${side}</div>
+      <div>${spark
+        ? `<svg viewBox="0 0 80 20" preserveAspectRatio="none" style="width: 100%; height: 20px; display: block;"><path d="${linePath(spark, 80, 20, 1.5)}" fill="none" stroke="${sparkColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"></path></svg>`
+        : '<span class="lbl">no marks yet</span>'}</div>
+      <div class="mono ${pxFlash}" style="font-size: 12.5px; text-align: right; padding: 0 3px;">${fmtNum(p.current_price)}</div>
+      <div class="mono ${uplFlash}" style="font-size: 12.5px; font-weight: 600; text-align: right; color: ${pnlColor(p.unrealized_pnl)}; padding: 0 3px;">${fmtMoney(p.unrealized_pnl, { sign: true })}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderBlotter() {
+  const filter = S.filter.toLowerCase();
+  const filtered = S.blotter.filter((t) =>
+    (S.strat === "all" || t.strategy === S.strat) &&
+    (!filter || String(t.symbol).toLowerCase().includes(filter) ||
+      String(t.rationale).toLowerCase().includes(filter) ||
+      String(t.side).toLowerCase().includes(filter))
+  );
+  const shown = filtered.slice(-12).reverse();
+  if (!shown.length) {
+    $("blotter-grid").innerHTML = '<div class="empty-note">' +
+      (S.blotter.length ? "Nothing in the record matches that search." : "No dispatches yet — the machine has not traded.") + "</div>";
+    $("blotter-count").textContent = "";
+    return;
+  }
+  const latestKey = shown[0].timestamp + "|" + shown[0].symbol;
+  const isNew = S.prev["latestTrade"] != null && S.prev["latestTrade"] !== latestKey;
+  S.prev["latestTrade"] = latestKey;
+  $("blotter-grid").innerHTML = shown.map((t, i) => {
+    const sideUp = String(t.side).toLowerCase() === "buy";
+    return `<div style="padding: 11px 6px; border-bottom: 1px dotted var(--hair); border-radius: 4px;${isNew && i === 0 ? " animation: dispatchIn 1.8s ease-out;" : ""}">
+      <div class="mono" style="display: flex; align-items: baseline; gap: 10px; font-size: 12px;">
+        <span style="color: var(--muted); font-size: 11px;">${fmtDateTime(t.timestamp)}</span>
+        <span style="font-weight: 700; color: ${sideUp ? "var(--up)" : "var(--red)"};">${esc(String(t.side).toUpperCase())}</span>
+        <span style="font-weight: 700;">${esc(t.symbol)}</span>
+        <span>${fmtNum(t.quantity, t.quantity < 1 ? 4 : 0)} @ ${fmtNum(t.fill_price)}</span>
+        <span style="flex: 1;"></span>
+        <span style="font-weight: 600; color: ${t.realized_pnl ? pnlColor(t.realized_pnl) : "var(--muted)"};">${t.realized_pnl ? fmtMoney(t.realized_pnl, { sign: true }) : ""}</span>
+      </div>
+      <div style="font-size: 14.5px; font-style: italic; line-height: 1.5; margin-top: 4px;">“${esc(t.rationale)}”</div>
+      <div class="lbl" style="margin-top: 4px;">— ${esc(String(t.strategy).toUpperCase().replace(/_/g, " "))} DESK · FEES ${fmtNum(t.fees)} · SLIPPAGE ${fmtNum(t.slippage)}</div>
+    </div>`;
+  }).join("");
+  $("blotter-count").textContent = `${shown.length} OF ${filtered.length} DISPATCHES · NEWEST FIRST`;
+}
+
+function renderStatus(status) {
+  S.halted = !!status.kill_switch_halted;
+  $("live-label").textContent = S.halted ? "HALTED" : "LIVE (SIMULATED)";
+  $("wire-dot").style.background = S.halted ? "var(--red)" : "var(--up)";
+  $("last-update").textContent = fmtTime(new Date());
+  $("next-eq").textContent = fmtTime(status.next_scheduled_run_equity);
+  $("next-cr").textContent = fmtTime(status.next_scheduled_run_crypto);
+  renderKillArea();
+}
+
+async function renderBacktest() {
+  try {
+    const bt = await (await fetch(API + "/backtest")).json();
+    if (!bt.available) return;
+    $("bt-label").textContent = bt.label || "Event-driven backtest";
+    $("bt-body").style.display = "grid";
+    if (bt.curve && bt.curve.length >= 2) $("bt-line").setAttribute("d", linePath(bt.curve, 320, 86, 4));
+    const m = bt.metrics || {};
+    const items = [
+      ["CAGR", fmtPct(m.cagr, 1)], ["SHARPE", fmtFixed(m.sharpe)],
+      ["SORTINO", fmtFixed(m.sortino)], ["MAX DD", fmtPct(m.max_drawdown, 1)],
+      ["HIT RATE", fmtPct(m.hit_rate, 1)], ["TRADES", m.trades != null ? String(m.trades) : "—"],
+      ["VAR 95", fmtPct(m.var_95, 2)], ["BETA", fmtFixed(m.beta)],
+    ];
+    $("bt-metrics").innerHTML = items.map(([label, value]) =>
+      `<div style="border-top: 1px solid var(--hair); padding-top: 5px;">
+        <div class="lbl" style="font-size: 10px;">${label}</div>
+        <div class="mono" style="font-size: 15px; font-weight: 600; margin-top: 2px;">${value}</div>
+      </div>`).join("");
+  } catch (e) { /* backtest section stays in its empty state */ }
+}
+
+// ---------- poll loop ----------
+async function poll() {
+  try {
+    const [perf, positions, blotter, risk, att, status] = await Promise.all([
+      fetch(API + "/performance").then((r) => r.json()),
+      fetch(API + "/positions").then((r) => r.json()),
+      fetch(API + "/blotter").then((r) => r.json()),
+      fetch(API + "/risk").then((r) => r.json()),
+      fetch(API + "/attribution").then((r) => r.json()),
+      fetch(API + "/status").then((r) => r.json()),
+    ]);
+    S.blotter = blotter.trades || [];
+    renderStatus(status);
+    renderPerformance(perf);
+    renderRisk(risk);
+    renderAttribution(att);
+    renderPositions(positions);
+    renderBlotter();
+    if (!S.backtestLoaded) { S.backtestLoaded = true; renderBacktest(); }
+  } catch (e) {
+    $("live-label").textContent = "WIRE DOWN";
+    $("wire-dot").style.background = "var(--red)";
+  }
+}
+
+renderKillArea();
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

@@ -13,11 +13,33 @@ client = TestClient(app)
 
 
 class TestEndpoints:
-    def test_root(self):
+    def test_root_serves_ledger_ui(self):
         resp = client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "SIMULATED / PAPER TRADING" in resp.text
+
+    def test_api_index(self):
+        resp = client.get("/api")
         assert resp.status_code == 200
         body = resp.json()
         assert body["disclaimer"] == DISCLAIMER
+
+    def test_backtest_schema(self):
+        resp = client.get("/backtest")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["disclaimer"] == DISCLAIMER
+        assert "available" in body
+        if body["available"]:
+            assert "metrics" in body and "curve" in body
+
+    def test_positions_include_spark(self):
+        resp = client.get("/positions")
+        assert resp.status_code == 200
+        for pos in resp.json()["positions"]:
+            assert "spark" in pos
+            assert isinstance(pos["spark"], list)
 
     def test_performance_schema(self):
         resp = client.get("/performance")

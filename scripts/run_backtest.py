@@ -68,8 +68,42 @@ def main(output_path: str = "reports/backtest_report.md") -> None:
     with open(output_path, "w") as f:
         f.write(report.to_markdown())
 
+    # Report the symbols actually backtested, not the configured universe
+    # (some may have been skipped above for missing data).
+    _write_dashboard_summary(result, report, list(bars_by_symbol.keys()))
+
     print(DISCLAIMER)
     print(f"Backtest report written to {output_path}")
+
+
+def _write_dashboard_summary(result: dict, report, universe: list[str]) -> None:
+    """Persist a small JSON summary for the dashboard's /backtest endpoint --
+    metrics plus a downsampled equity curve for the archive sparkline."""
+    import json
+    from datetime import datetime, timezone
+
+    from settings import state_dir
+
+    curve = result["equity_curve"]
+    n_points = 90
+    if len(curve) > n_points:
+        step = max(1, len(curve) // n_points)
+        curve = curve.iloc[::step]
+    trades = int(len(result["blotter"])) if not result["blotter"].empty else 0
+    start = str(result["equity_curve"].index[0].date()) if len(result["equity_curve"]) else ""
+    end = str(result["equity_curve"].index[-1].date()) if len(result["equity_curve"]) else ""
+
+    summary = {
+        "label": f"Event-driven backtest -- {start} -> {end} · {len(universe)}-symbol universe",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "metrics": {**{k: (None if v != v else v) for k, v in report.strategy_metrics.items()},
+                    "trades": trades},
+        "curve": [float(v) for v in curve.values],
+    }
+    out = state_dir() / "backtest_summary.json"
+    with open(out, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"Dashboard backtest summary written to {out}")
 
 
 if __name__ == "__main__":
