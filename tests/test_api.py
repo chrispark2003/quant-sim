@@ -4,9 +4,13 @@ disclaimer.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+import dashboard.app as dashboard_app
 from dashboard.app import DISCLAIMER, app
 
 client = TestClient(app)
@@ -48,6 +52,35 @@ class TestEndpoints:
         for key in ["disclaimer", "starting_cash", "current_cash", "realized_pnl", "unrealized_pnl", "equity_curve", "max_drawdown"]:
             assert key in body
         assert body["disclaimer"] == DISCLAIMER
+
+    def test_performance_downsamples_to_exact_cap_and_keeps_last_point(self, monkeypatch):
+        n = dashboard_app._EQUITY_CURVE_MAX_POINTS + 1
+        idx = pd.date_range("2026-01-01", periods=n, freq="min", tz="UTC")
+        curve = pd.Series(range(n), index=idx, dtype=float)
+
+        class _LedgerStub:
+            starting_cash = 100_000.0
+            cash = 100_000.0
+            positions = {}
+
+            def equity_curve(self):
+                return curve
+
+            def total_realized_pnl(self):
+                return 0.0
+
+            def total_unrealized_pnl(self, _prices):
+                return 0.0
+
+        monkeypatch.setattr(dashboard_app, "_refresh_state", lambda: None)
+        monkeypatch.setattr(dashboard_app, "_current_prices", lambda: {})
+        monkeypatch.setattr(dashboard_app, "_state", SimpleNamespace(ledger=_LedgerStub()))
+
+        resp = client.get("/performance")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["equity_curve"]) == dashboard_app._EQUITY_CURVE_MAX_POINTS
+        assert body["equity_curve"][-1] == {"timestamp": str(curve.index[-1]), "equity": float(curve.iloc[-1])}
 
     def test_positions_schema(self):
         resp = client.get("/positions")
