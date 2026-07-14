@@ -24,14 +24,30 @@ from live.kill_switch import get_kill_switch
 from live.scheduler import Scheduler
 from live.state import LiveState
 from risk.metrics import full_metrics_report
-from settings import state_dir, strategies_config
+from settings import env, state_dir, strategies_config
 
 DISCLAIMER = "SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE"
 
 app = FastAPI(title="quant-sim paper trading dashboard", description=DISCLAIMER)
 
+# The dashboard UI is served same-origin from `/`, so no cross-origin access is
+# required for normal use. Keep CORS narrow -- only explicit local dev origins,
+# and only GET -- so an arbitrary website can't drive the unauthenticated
+# state-changing endpoints (/kill, /resume) from a victim's browser. Additional
+# origins can be allowed via DASHBOARD_CORS_ORIGINS (comma-separated).
+_cors_origins = [
+    "http://localhost:8000", "http://127.0.0.1:8000",
+    "http://localhost:8501", "http://127.0.0.1:8501",
+]
+_extra_origins = env("DASHBOARD_CORS_ORIGINS")
+if _extra_origins:
+    _cors_origins += [o.strip() for o in _extra_origins.split(",") if o.strip()]
+
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["GET"],
+    allow_headers=["*"],
 )
 
 _config = strategies_config()
@@ -70,7 +86,10 @@ def _current_prices() -> dict[str, float]:
     open_syms = [s for s, p in _state.ledger.positions.items() if p.quantity != 0]
     if now - _price_cache["ts"] > _PRICE_CACHE_SECONDS or set(open_syms) - set(_price_cache["sparks"]):
         prices: dict[str, float] = {}
-        sparks: dict[str, list[float]] = {}
+        # Seed every open symbol with an empty spark list up front. Symbols with
+        # no stored bars yet then still get a `sparks` key, so the cache-miss
+        # check below settles instead of re-querying DuckDB on every poll.
+        sparks: dict[str, list[float]] = {s: [] for s in open_syms}
         if open_syms:
             try:
                 from data.store import get_store
@@ -83,7 +102,7 @@ def _current_prices() -> dict[str, float]:
                             prices[sym] = float(closes[-1])
                             sparks[sym] = [float(c) for c in closes]
             except Exception:
-                prices, sparks = {}, {}
+                prices = {}
         _price_cache.update(ts=now, prices=prices, sparks=sparks)
     return {
         sym: _price_cache["prices"].get(sym, pos.avg_entry_price)
