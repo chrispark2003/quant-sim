@@ -136,13 +136,17 @@ def _downsample_equity_curve(equity_curve: pd.Series, max_points: int = _EQUITY_
     points after 3 days. Downsample for display, always keeping the most
     recent point (the frontend reads it as "current equity")."""
     n = len(equity_curve)
+    if max_points <= 0:
+        return equity_curve.iloc[:0]
+    if max_points == 1:
+        return equity_curve.iloc[[-1]] if n else equity_curve
     if n <= max_points:
         return equity_curve
     # Evenly spaced positions from 0 to n-1 inclusive -- always includes the
     # last index, stays at (near) exactly max_points regardless of how far n
     # is above the cap (a fixed stride under/over-shoots badly just above the
     # threshold, e.g. n=501 with step=2 would keep only ~251 rows).
-    positions = sorted(set(np.linspace(0, n - 1, max_points).round().astype(int)))
+    positions = np.linspace(0, n - 1, max_points, dtype=int)
     return equity_curve.iloc[positions]
 
 

@@ -139,6 +139,18 @@ class TestEquityCurveDownsampling:
         out = _downsample_equity_curve(_equity_series(501))
         assert len(out) >= _EQUITY_CURVE_MAX_POINTS - 1
 
+    def test_max_points_one_returns_most_recent_point(self):
+        s = _equity_series(600)
+        out = _downsample_equity_curve(s, max_points=1)
+        assert len(out) == 1
+        assert out.iloc[-1] == s.iloc[-1]
+        assert out.index[-1] == s.index[-1]
+
+    @pytest.mark.parametrize("max_points", [0, -1, -10])
+    def test_non_positive_max_points_returns_empty(self, max_points):
+        out = _downsample_equity_curve(_equity_series(600), max_points=max_points)
+        assert out.empty
+
     def test_performance_endpoint_curve_is_capped(self):
         resp = client.get("/performance")
         assert resp.status_code == 200
