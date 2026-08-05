@@ -70,16 +70,24 @@ _SPARK_POINTS = 44
 
 
 def _require_control_token(authorization: str | None = Header(default=None)) -> None:
+    import secrets
+
     token = env("DASHBOARD_CONTROL_TOKEN")
     if not token:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="dashboard control endpoints disabled; set DASHBOARD_CONTROL_TOKEN",
         )
-    expected = f"Bearer {token}"
-    if authorization != expected:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid control token")
 
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing control token")
+
+    scheme, _, provided = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not provided:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid authorization scheme")
+
+    if not secrets.compare_digest(provided.strip(), token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid control token")
 
 def _current_prices() -> dict[str, float]:
     """Mark open positions at the latest close the live loop wrote to the
