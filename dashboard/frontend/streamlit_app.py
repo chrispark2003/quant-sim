@@ -17,6 +17,7 @@ from streamlit_autorefresh import st_autorefresh
 
 DISCLAIMER = "SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE"
 API_BASE = os.environ.get("QUANT_SIM_API_BASE", "http://localhost:8000")
+CONTROL_TOKEN = os.environ.get("DASHBOARD_CONTROL_TOKEN")
 
 st.set_page_config(page_title="quant-sim paper trading", layout="wide")
 
@@ -38,7 +39,8 @@ def api_get(path: str) -> dict:
 
 def api_post(path: str) -> dict:
     try:
-        resp = requests.post(f"{API_BASE}{path}", timeout=10)
+        headers = {"Authorization": f"Bearer {CONTROL_TOKEN}"} if CONTROL_TOKEN else {}
+        resp = requests.post(f"{API_BASE}{path}", headers=headers, timeout=10)
         resp.raise_for_status()
         return resp.json()
     except Exception as e:

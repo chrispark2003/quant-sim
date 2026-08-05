@@ -62,15 +62,28 @@ class TestEndpoints:
         for key in ["disclaimer", "kill_switch_halted", "kill_switch_reason"]:
             assert key in body
 
-    def test_kill_and_resume_roundtrip(self):
+    def test_control_endpoints_disabled_without_token(self, monkeypatch):
+        monkeypatch.delenv("DASHBOARD_CONTROL_TOKEN", raising=False)
         resp = client.post("/kill")
+        assert resp.status_code == 503
+
+    def test_control_endpoints_reject_invalid_token(self, monkeypatch):
+        monkeypatch.setenv("DASHBOARD_CONTROL_TOKEN", "test-control-token")
+        resp = client.post("/kill", headers={"Authorization": "Bearer wrong"})
+        assert resp.status_code == 401
+
+    def test_kill_and_resume_roundtrip(self, monkeypatch):
+        monkeypatch.setenv("DASHBOARD_CONTROL_TOKEN", "test-control-token")
+        headers = {"Authorization": "Bearer test-control-token"}
+
+        resp = client.post("/kill", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["status"] == "halted"
 
         status_after_kill = client.get("/status").json()
         assert status_after_kill["kill_switch_halted"] is True
 
-        resp = client.post("/resume")
+        resp = client.post("/resume", headers=headers)
         assert resp.status_code == 200
         assert resp.json()["status"] == "resumed"
 

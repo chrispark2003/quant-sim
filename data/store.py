@@ -6,6 +6,7 @@ long schema (timestamp, symbol, asset_class, field, value).
 """
 from __future__ import annotations
 
+import re
 import threading
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from settings import duckdb_path, parquet_dir
 
 _TABLE = "observations"
 _lock = threading.Lock()
+_EXPORT_SYMBOL_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 class TimeSeriesStore:
@@ -94,11 +96,14 @@ class TimeSeriesStore:
     def export_parquet(self, symbol: str | None = None) -> str:
         out_dir = Path(parquet_dir())
         out_dir.mkdir(parents=True, exist_ok=True)
+        if symbol is not None and not _EXPORT_SYMBOL_RE.fullmatch(symbol):
+            raise ValueError("symbol contains unsupported characters for parquet export")
         fname = f"{symbol}.parquet" if symbol else "all_observations.parquet"
         out_path = out_dir / fname
+        safe_out_path = str(out_path).replace("'", "''")
         where = f"WHERE symbol = '{symbol}'" if symbol else ""
         with _lock, self._connect() as con:
-            con.execute(f"COPY (SELECT * FROM {_TABLE} {where}) TO '{out_path}' (FORMAT PARQUET)")
+            con.execute(f"COPY (SELECT * FROM {_TABLE} {where}) TO '{safe_out_path}' (FORMAT PARQUET)")
         return str(out_path)
 
     def symbols(self) -> list[str]:

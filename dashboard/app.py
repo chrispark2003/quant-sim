@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -20,20 +20,38 @@ from live.kill_switch import get_kill_switch
 from live.scheduler import Scheduler
 from live.state import LiveState
 from risk.metrics import full_metrics_report
-from settings import strategies_config
+from settings import env, strategies_config
 
 DISCLAIMER = "SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE"
 
 app = FastAPI(title="quant-sim paper trading dashboard", description=DISCLAIMER)
 
+_allowed_origins = [
+    origin.strip()
+    for origin in (env("DASHBOARD_CORS_ORIGINS", "http://localhost:8501,http://127.0.0.1:8501") or "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware, allow_origins=_allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"],
 )
 
 _config = strategies_config()
 _state = LiveState(starting_cash=_config["account"]["starting_cash"])
 _kill_switch = get_kill_switch()
 _scheduler = Scheduler(_config["live"]["cadence"], _config["live"]["equity_market_hours"])
+
+
+def _require_control_token(authorization: str | None = Header(default=None)) -> None:
+    token = env("DASHBOARD_CONTROL_TOKEN")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="dashboard control endpoints disabled; set DASHBOARD_CONTROL_TOKEN",
+        )
+    expected = f"Bearer {token}"
+    if authorization != expected:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid control token")
 
 
 def _current_prices() -> dict[str, float]:
@@ -123,13 +141,13 @@ def get_status():
 
 
 @app.post("/kill")
-def post_kill():
+def post_kill(_: None = Depends(_require_control_token)):
     _kill_switch.halt(reason="halted via dashboard /kill endpoint")
     return {"disclaimer": DISCLAIMER, "status": "halted"}
 
 
 @app.post("/resume")
-def post_resume():
+def post_resume(_: None = Depends(_require_control_token)):
     _kill_switch.resume()
     return {"disclaimer": DISCLAIMER, "status": "resumed"}
 
