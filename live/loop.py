@@ -59,6 +59,7 @@ class AutonomousPaperTradingLoop:
 
         self.equity_adapter = YFinanceAdapter()
         self.crypto_adapter = BinanceAdapter()
+        self.latest_prices: dict[str, float] = {}
 
         self.sector_by_symbol = {
             e["symbol"]: e["sector"] for e in self.symbols_cfg.get("equities", [])
@@ -114,18 +115,32 @@ class AutonomousPaperTradingLoop:
         score = float(score_series.iloc[-1]) if not score_series.empty else 0.0
 
         current_price = float(ohlcv["close"].iloc[-1])
+        self.latest_prices[symbol] = current_price
         realized_vol = features["volatility"].iloc[-1]
         if pd.isna(realized_vol) or realized_vol <= 0:
             realized_vol = self.sizer.target_annual_vol
 
-        current_prices = {symbol: current_price}
+        current_prices = {
+            sym: self.latest_prices.get(sym, pos.avg_entry_price)
+            for sym, pos in self.state.ledger.positions.items()
+        }
+        current_prices[symbol] = current_price
         equity_curve = self.state.ledger.equity_curve()
-        equity = equity_curve.iloc[-1] if not equity_curve.empty else self.state.ledger.starting_cash
+        equity = self.state.ledger.equity(current_prices)
         positions_notional = self.state.ledger.position_notional_map(current_prices)
+        sector = self.sector_by_symbol.get(symbol)
+        sector_pct = 0.0
+        if sector and equity > 0:
+            sector_notional = sum(
+                abs(notional)
+                for held_symbol, notional in positions_notional.items()
+                if held_symbol != symbol and self.sector_by_symbol.get(held_symbol) == sector
+            )
+            sector_pct = sector_notional / equity
 
         sizing = self.sizer.size_position(
             symbol=symbol, signal_score=score, equity=equity,
-            realized_annual_vol=realized_vol, sector=self.sector_by_symbol.get(symbol),
+            realized_annual_vol=realized_vol, sector=sector, current_sector_pct=sector_pct,
         )
 
         constraint_result = self.constraints.evaluate(

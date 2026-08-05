@@ -14,7 +14,7 @@ paper:
 	$(PYTHON) -m live.loop
 
 dashboard:
-	uvicorn dashboard.app:app --host 0.0.0.0 --port 8000 --reload &
+	uvicorn dashboard.app:app --host 127.0.0.1 --port 8000 --reload &
 	streamlit run dashboard/frontend/streamlit_app.py
 
 test:

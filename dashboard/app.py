@@ -16,7 +16,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -31,24 +31,14 @@ DISCLAIMER = "SIMULATED / PAPER TRADING -- NOT FINANCIAL ADVICE"
 
 app = FastAPI(title="quant-sim paper trading dashboard", description=DISCLAIMER)
 
-# The dashboard UI is served same-origin from `/`, so no cross-origin access is
-# required for normal use. Keep CORS narrow -- only explicit local dev origins,
-# and only GET -- so an arbitrary website can't drive the unauthenticated
-# state-changing endpoints (/kill, /resume) from a victim's browser. Additional
-# origins can be allowed via DASHBOARD_CORS_ORIGINS (comma-separated).
-_cors_origins = [
-    "http://localhost:8000", "http://127.0.0.1:8000",
-    "http://localhost:8501", "http://127.0.0.1:8501",
+_allowed_origins = [
+    origin.strip()
+    for origin in (env("DASHBOARD_CORS_ORIGINS", "http://localhost:8501,http://127.0.0.1:8501") or "").split(",")
+    if origin.strip()
 ]
-_extra_origins = env("DASHBOARD_CORS_ORIGINS")
-if _extra_origins:
-    _cors_origins += [o.strip() for o in _extra_origins.split(",") if o.strip()]
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=_allowed_origins, allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"],
 )
 
 _config = strategies_config()
@@ -78,6 +68,26 @@ _price_cache: dict = {"ts": 0.0, "prices": {}, "sparks": {}}
 _PRICE_CACHE_SECONDS = 10
 _SPARK_POINTS = 44
 
+
+def _require_control_token(authorization: str | None = Header(default=None)) -> None:
+    import secrets
+
+    token = env("DASHBOARD_CONTROL_TOKEN")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="dashboard control endpoints disabled; set DASHBOARD_CONTROL_TOKEN",
+        )
+
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing control token")
+
+    scheme, _, provided = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not provided:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid authorization scheme")
+
+    if not secrets.compare_digest(provided.strip(), token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid control token")
 
 def _current_prices() -> dict[str, float]:
     """Mark open positions at the latest close the live loop wrote to the
@@ -229,13 +239,13 @@ def get_status():
 
 
 @app.post("/kill")
-def post_kill():
+def post_kill(_: None = Depends(_require_control_token)):
     _kill_switch.halt(reason="halted via dashboard /kill endpoint")
     return {"disclaimer": DISCLAIMER, "status": "halted"}
 
 
 @app.post("/resume")
-def post_resume():
+def post_resume(_: None = Depends(_require_control_token)):
     _kill_switch.resume()
     return {"disclaimer": DISCLAIMER, "status": "resumed"}
 
